@@ -1,185 +1,289 @@
-// =====================================================
-//   ROBOT MINISUMO - Arduino Pro Micro
-//   Componentes: QTR-3A | KY-022 | TB6612FNG | N20
-//   Lógica: esperar señal IR → delay 5s → avanzar
-//         + detección de borde (QTR-3A)
-// =====================================================
+#include <IRremote.hpp>
 
-#include <IRremote.h>
+/////////////////////////////////////////////////////////
+// PIN IR START
+/////////////////////////////////////////////////////////
 
-// ── PINES TB6612FNG ──────────────────────────────────
-// Motor Izquierdo
-#define AIN1  4
-#define AIN2  5
-#define PWMA  9   // PWM
+#define IR_RECEIVE_PIN 2
+#define PLAY_CODE 3810328320
 
-// Motor Derecho
-#define BIN1  6
-#define BIN2  7
-#define PWMB  10  // PWM
+/////////////////////////////////////////////////////////
+// TB6612FNG
+/////////////////////////////////////////////////////////
 
-#define STBY  8   // Standby del TB6612FNG (HIGH = activo)
+// MOTOR IZQUIERDO
+#define PWMA 3
+#define AIN1 5
+#define AIN2 6
 
-// ── PINES SENSORES QTR-3A ────────────────────────────
-// Sensor izquierdo, centro, derecho
-#define S_IZQ   A0
-#define S_CEN   A1
-#define S_DER   A2
+// MOTOR DERECHO
+#define BIN1 7
+#define BIN2 8
+#define PWMB 9
 
-// ── PINES IR (KY-022) ────────────────────────────────
-// Se usan 2 receptores IR; puedes usar uno o ambos
-// IRremote solo necesita un pin a la vez en modo básico
-#define IR_PIN  2   // receptor IR principal (interrupción)
+// STANDBY
+#define STBY 4
 
-// ── CONSTANTES ───────────────────────────────────────
-#define VELOCIDAD        200   // 0-255
-#define UMBRAL_BORDE     500   // valor analógico (blanco < umbral)
-#define DELAY_ARRANQUE   5000  // 5 segundos
+/////////////////////////////////////////////////////////
+// QTR / BARRA IR
+/////////////////////////////////////////////////////////
 
-// Código del botón "play" de tu control remoto
-// Cámbialo al valor que ves en el Serial Monitor
-#define CODIGO_PLAY      3810328320  // ejemplo NEC; ajusta al tuyo
+#define QTR_LEFT   A0
+#define QTR_CENTER A1
+#define QTR_RIGHT  A2
 
-// ── VARIABLES ────────────────────────────────────────
-IRrecv receptor(IR_PIN);
-decode_results resultado;
+/////////////////////////////////////////////////////////
+// VARIABLES
+/////////////////////////////////////////////////////////
 
-bool robotActivo = false;
+bool iniciado = false;
 
-// =====================================================
-//   SETUP
-// =====================================================
+bool lineaDetectada = false;
+
+int velocidadBusqueda = 120;
+int velocidadAtaque = 255;
+int velocidadEscape = 220;
+
+/////////////////////////////////////////////////////////
+// SETUP
+/////////////////////////////////////////////////////////
+
 void setup() {
+
   Serial.begin(9600);
 
-  // Pines motor
+  configurarMotores();
+  configurarSensores();
+  configurarControlIR();
+
+  Serial.println("ROBOT LISTO");
+}
+
+/////////////////////////////////////////////////////////
+// LOOP
+/////////////////////////////////////////////////////////
+
+void loop() {
+
+  if (!iniciado) {
+
+    esperarInicio();
+  }
+  else {
+
+    leerSensores();
+
+    if (lineaDetectada) {
+
+      escapar();
+    }
+    else {
+
+      buscar();
+    }
+  }
+}
+
+/////////////////////////////////////////////////////////
+// IR
+/////////////////////////////////////////////////////////
+
+void configurarControlIR() {
+
+  IrReceiver.begin(IR_RECEIVE_PIN);
+
+  Serial.println("IR CONFIGURADO");
+}
+
+/////////////////////////////////////////////////////////
+// MOTORES
+/////////////////////////////////////////////////////////
+
+void configurarMotores() {
+
   pinMode(AIN1, OUTPUT);
   pinMode(AIN2, OUTPUT);
   pinMode(PWMA, OUTPUT);
+
   pinMode(BIN1, OUTPUT);
   pinMode(BIN2, OUTPUT);
   pinMode(PWMB, OUTPUT);
+
   pinMode(STBY, OUTPUT);
 
-  // Motores apagados al inicio
-  digitalWrite(STBY, LOW);
+  digitalWrite(STBY, HIGH);
 
-  // Receptor IR
-  receptor.enableIRIn();
-
-  Serial.println("Minisumo listo. Esperando señal IR...");
+  Serial.println("MOTORES CONFIGURADOS");
 }
 
-// =====================================================
-//   LOOP PRINCIPAL
-// =====================================================
-void loop() {
+/////////////////////////////////////////////////////////
+// SENSORES
+/////////////////////////////////////////////////////////
 
-  // ── 1. Escuchar control remoto ──────────────────
-  if (!robotActivo && receptor.decode(&resultado)) {
-    Serial.print("Código recibido: 0x");
-    Serial.println(resultado.value, HEX);
+void configurarSensores() {
 
-    if (resultado.value == CODIGO_PLAY) {
-      Serial.println("¡Play recibido! Arrancando en 5 segundos...");
-      delay(DELAY_ARRANQUE);
-      robotActivo = true;
-      digitalWrite(STBY, HIGH);  // Habilitar driver
-      Serial.println("¡Combate!");
+  pinMode(QTR_LEFT, INPUT);
+  pinMode(QTR_CENTER, INPUT);
+  pinMode(QTR_RIGHT, INPUT);
+
+  Serial.println("SENSORES CONFIGURADOS");
+}
+
+/////////////////////////////////////////////////////////
+// ESPERAR START
+/////////////////////////////////////////////////////////
+
+void esperarInicio() {
+
+  Serial.println("ESPERANDO PLAY");
+
+  if (IrReceiver.decode()) {
+
+    unsigned long codigo =
+      IrReceiver.decodedIRData.decodedRawData;
+
+    Serial.println(codigo);
+
+    if (codigo == PLAY_CODE) {
+
+      Serial.println("INICIANDO EN 5 SEGUNDOS");
+
+      delay(5000);
+
+      iniciado = true;
     }
 
-    receptor.resume();  // Listo para siguiente señal
+    IrReceiver.resume();
   }
 
-  // ── 2. Lógica de combate ────────────────────────
-  if (robotActivo) {
-    int valIzq = analogRead(S_IZQ);
-    int valCen = analogRead(S_CEN);
-    int valDer = analogRead(S_DER);
+  delay(300);
+}
 
-    bool bordeIzq = (valIzq < UMBRAL_BORDE);
-    bool bordeCen = (valCen < UMBRAL_BORDE);
-    bool bordeDer = (valDer < UMBRAL_BORDE);
+/////////////////////////////////////////////////////////
+// LEER SENSORES
+/////////////////////////////////////////////////////////
 
-    // ── Reacciones al borde blanco ────────────────
-    if (bordeIzq && bordeDer) {
-      // Borde al frente → retroceder y girar
-      retroceder();
-      delay(300);
-      girarDerecha();
-      delay(400);
-    }
-    else if (bordeIzq) {
-      // Borde izquierdo → retroceder y girar a la derecha
-      retroceder();
-      delay(200);
-      girarDerecha();
-      delay(300);
-    }
-    else if (bordeDer) {
-      // Borde derecho → retroceder y girar a la izquierda
-      retroceder();
-      delay(200);
-      girarIzquierda();
-      delay(300);
-    }
-    else {
-      // Sin borde → avanzar
-      avanzar();
-    }
+void leerSensores() {
+
+  int izquierda = analogRead(QTR_LEFT);
+  int centro = analogRead(QTR_CENTER);
+  int derecha = analogRead(QTR_RIGHT);
+
+  Serial.print("IZQ: ");
+  Serial.print(izquierda);
+
+  Serial.print("  CEN: ");
+  Serial.print(centro);
+
+  Serial.print("  DER: ");
+  Serial.println(derecha);
+
+  ///////////////////////////////////////////////////////
+  // BORDE BLANCO
+  ///////////////////////////////////////////////////////
+
+  if (izquierda < 500 ||
+      centro < 500 ||
+      derecha < 500) {
+
+    lineaDetectada = true;
+  }
+  else {
+
+    lineaDetectada = false;
   }
 }
 
-// =====================================================
-//   FUNCIONES DE MOVIMIENTO
-// =====================================================
+/////////////////////////////////////////////////////////
+// BUSCAR
+/////////////////////////////////////////////////////////
+
+void buscar() {
+
+  Serial.println("BUSCANDO");
+
+  girarDerecha();
+}
+
+/////////////////////////////////////////////////////////
+// ESCAPAR
+/////////////////////////////////////////////////////////
+
+void escapar() {
+
+  Serial.println("ESCAPANDO");
+
+  retroceder();
+
+  delay(300);
+
+  girarIzquierda();
+
+  delay(300);
+}
+
+/////////////////////////////////////////////////////////
+// MOVIMIENTOS
+/////////////////////////////////////////////////////////
 
 void avanzar() {
-  // Motor A - adelante
+
   digitalWrite(AIN1, HIGH);
   digitalWrite(AIN2, LOW);
-  analogWrite(PWMA, VELOCIDAD);
 
-  // Motor B - adelante
   digitalWrite(BIN1, HIGH);
   digitalWrite(BIN2, LOW);
-  analogWrite(PWMB, VELOCIDAD);
+
+  analogWrite(PWMA, velocidadAtaque);
+  analogWrite(PWMB, velocidadAtaque);
 }
+
+/////////////////////////////////////////////////////////
 
 void retroceder() {
+
   digitalWrite(AIN1, LOW);
   digitalWrite(AIN2, HIGH);
-  analogWrite(PWMA, VELOCIDAD);
 
   digitalWrite(BIN1, LOW);
   digitalWrite(BIN2, HIGH);
-  analogWrite(PWMB, VELOCIDAD);
+
+  analogWrite(PWMA, velocidadEscape);
+  analogWrite(PWMB, velocidadEscape);
 }
+
+/////////////////////////////////////////////////////////
 
 void girarDerecha() {
-  // Motor A adelante, Motor B atrás
+
   digitalWrite(AIN1, HIGH);
   digitalWrite(AIN2, LOW);
-  analogWrite(PWMA, VELOCIDAD);
 
   digitalWrite(BIN1, LOW);
   digitalWrite(BIN2, HIGH);
-  analogWrite(PWMB, VELOCIDAD);
+
+  analogWrite(PWMA, velocidadBusqueda);
+  analogWrite(PWMB, velocidadBusqueda);
 }
 
+/////////////////////////////////////////////////////////
+
 void girarIzquierda() {
-  // Motor A atrás, Motor B adelante
+
   digitalWrite(AIN1, LOW);
   digitalWrite(AIN2, HIGH);
-  analogWrite(PWMA, VELOCIDAD);
 
   digitalWrite(BIN1, HIGH);
   digitalWrite(BIN2, LOW);
-  analogWrite(PWMB, VELOCIDAD);
+
+  analogWrite(PWMA, velocidadBusqueda);
+  analogWrite(PWMB, velocidadBusqueda);
 }
 
+/////////////////////////////////////////////////////////
+
 void detener() {
+
   analogWrite(PWMA, 0);
   analogWrite(PWMB, 0);
-  digitalWrite(STBY, LOW);
 }
