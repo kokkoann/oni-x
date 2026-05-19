@@ -40,7 +40,7 @@ bool iniciado = false;
 
 bool lineaDetectada = false;
 
-int velocidadBusqueda = 120;
+int velocidadBusqueda = 180;
 int velocidadAtaque = 255;
 int velocidadEscape = 220;
 
