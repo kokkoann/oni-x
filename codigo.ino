@@ -40,7 +40,7 @@ bool iniciado = false;
 
 bool lineaDetectada = false;
 
-int velocidadBusqueda = 180;
+int velocidadBusqueda = 120;
 int velocidadAtaque = 255;
 int velocidadEscape = 220;
 
@@ -65,11 +65,61 @@ void setup() {
 
 void loop() {
 
-  if (!iniciado) {
+  ///////////////////////////////////////////////////////
+  // LEER CONTROL IR SIEMPRE
+  ///////////////////////////////////////////////////////
 
-    esperarInicio();
+  if (IrReceiver.decode()) {
+
+    unsigned long codigo =
+      IrReceiver.decodedIRData.decodedRawData;
+
+    Serial.print("CODIGO: ");
+    Serial.println(codigo);
+
+    /////////////////////////////////////////////////////
+    // BOTON PLAY
+    /////////////////////////////////////////////////////
+
+    if (codigo == PLAY_CODE) {
+
+      ///////////////////////////////////////////////////
+      // SI ESTA APAGADO -> ENCENDER
+      ///////////////////////////////////////////////////
+
+      if (!iniciado) {
+
+        Serial.println("INICIANDO EN 5 SEGUNDOS");
+
+        delay(5000);
+
+        iniciado = true;
+
+        Serial.println("ROBOT ACTIVADO");
+      }
+
+      ///////////////////////////////////////////////////
+      // SI YA ESTA ENCENDIDO -> DETENER
+      ///////////////////////////////////////////////////
+
+      else {
+
+        Serial.println("ROBOT DETENIDO");
+
+        iniciado = false;
+
+        detener();
+      }
+    }
+
+    IrReceiver.resume();
   }
-  else {
+
+  ///////////////////////////////////////////////////////
+  // LOGICA DE COMBATE
+  ///////////////////////////////////////////////////////
+
+  if (iniciado) {
 
     leerSensores();
 
@@ -130,36 +180,6 @@ void configurarSensores() {
 }
 
 /////////////////////////////////////////////////////////
-// ESPERAR START
-/////////////////////////////////////////////////////////
-
-void esperarInicio() {
-
-  Serial.println("ESPERANDO PLAY");
-
-  if (IrReceiver.decode()) {
-
-    unsigned long codigo =
-      IrReceiver.decodedIRData.decodedRawData;
-
-    Serial.println(codigo);
-
-    if (codigo == PLAY_CODE) {
-
-      Serial.println("INICIANDO EN 5 SEGUNDOS");
-
-      delay(5000);
-
-      iniciado = true;
-    }
-
-    IrReceiver.resume();
-  }
-
-  delay(300);
-}
-
-/////////////////////////////////////////////////////////
 // LEER SENSORES
 /////////////////////////////////////////////////////////
 
@@ -179,7 +199,7 @@ void leerSensores() {
   Serial.println(derecha);
 
   ///////////////////////////////////////////////////////
-  // BORDE BLANCO
+  // DETECCION BORDE BLANCO
   ///////////////////////////////////////////////////////
 
   if (izquierda < 500 ||
@@ -223,10 +243,12 @@ void escapar() {
 }
 
 /////////////////////////////////////////////////////////
-// MOVIMIENTOS
+// AVANZAR
 /////////////////////////////////////////////////////////
 
 void avanzar() {
+
+  Serial.println("AVANZAR");
 
   digitalWrite(AIN1, HIGH);
   digitalWrite(AIN2, LOW);
@@ -239,8 +261,12 @@ void avanzar() {
 }
 
 /////////////////////////////////////////////////////////
+// RETROCEDER
+/////////////////////////////////////////////////////////
 
 void retroceder() {
+
+  Serial.println("RETROCEDER");
 
   digitalWrite(AIN1, LOW);
   digitalWrite(AIN2, HIGH);
@@ -253,8 +279,12 @@ void retroceder() {
 }
 
 /////////////////////////////////////////////////////////
+// GIRAR DERECHA
+/////////////////////////////////////////////////////////
 
 void girarDerecha() {
+
+  Serial.println("GIRAR DERECHA");
 
   digitalWrite(AIN1, HIGH);
   digitalWrite(AIN2, LOW);
@@ -267,8 +297,12 @@ void girarDerecha() {
 }
 
 /////////////////////////////////////////////////////////
+// GIRAR IZQUIERDA
+/////////////////////////////////////////////////////////
 
 void girarIzquierda() {
+
+  Serial.println("GIRAR IZQUIERDA");
 
   digitalWrite(AIN1, LOW);
   digitalWrite(AIN2, HIGH);
@@ -281,8 +315,12 @@ void girarIzquierda() {
 }
 
 /////////////////////////////////////////////////////////
+// DETENER
+/////////////////////////////////////////////////////////
 
 void detener() {
+
+  Serial.println("DETENER");
 
   analogWrite(PWMA, 0);
   analogWrite(PWMB, 0);
