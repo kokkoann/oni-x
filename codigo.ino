@@ -231,8 +231,8 @@ void avanzar() {
   digitalWrite(AIN1, HIGH);
   digitalWrite(AIN2, LOW);
 
-  digitalWrite(BIN1, HIGH);
-  digitalWrite(BIN2, LOW);
+  digitalWrite(BIN1, LOW);
+  digitalWrite(BIN2, HIGH);
 
   analogWrite(PWMA, velocidadAtaque);
   analogWrite(PWMB, velocidadAtaque);
@@ -245,8 +245,8 @@ void retroceder() {
   digitalWrite(AIN1, LOW);
   digitalWrite(AIN2, HIGH);
 
-  digitalWrite(BIN1, LOW);
-  digitalWrite(BIN2, HIGH);
+  digitalWrite(BIN1, HIGH);
+  digitalWrite(BIN2, LOW);
 
   analogWrite(PWMA, velocidadEscape);
   analogWrite(PWMB, velocidadEscape);
